@@ -19,8 +19,6 @@ This project:
 | `deobfuscate.js` | Node.js deobfuscator — resolves string arrays, inlines constants, cleans up the source |
 | `hsw_deobfuscated.js` | Deobfuscated output, fully runnable in a browser |
 | `fetchblobkey.js` | Key extraction tool — patches the JS in-memory, runs it in a real Chrome instance, captures the AES key, verifies it by decrypting + re-encrypting |
-| `blob_key.md` | Technical writeup of the AES-CBC implementation, data flow, and breakpoint locations |
-| `debug.html` | Test harness for running the deobfuscated script in a browser |
 
 ## How the encryption works
 
