@@ -1,58 +1,81 @@
-# HSW-Blob Reverse Engineering
+<div align="center">
 
-Reverse engineering of hCaptcha's Fingerprint blob.
+# hCaptcha HSW Blob Encryption Analysis
 
-## What this does
+Reverse engineering study of how hCaptcha's HSW script encrypts its fingerprint blob, including recovery of an AES key hidden in a control-flow-flattened implementation.
 
-HSW collects browser fingerprints (canvas, WebGL, fonts, timing, etc.) and encrypts the browser events with AES-128-CBC before sending them as part of the challenge response. The encryption key is not stored as a plain byte array — it's buried inside a control-flow-flattened AES implementation using T-tables, where the round keys are embedded as arithmetic constants across dozens of switch-case branches.
+![Status](https://img.shields.io/badge/status-archived-lightgrey?style=flat-square)
+![Purpose](https://img.shields.io/badge/purpose-educational-blue?style=flat-square)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black)
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+
+</div>
+
+> [!IMPORTANT]
+> **Archived research · Educational use only**
+> This repository documents past research and is no longer maintained. The analyzed system has changed since publication, so the findings are **outdated** and may not reflect current versions.
+> The material is provided solely for educational and defensive security purposes. It must not be used to circumvent protections, automate access without authorization, or violate any platform's terms of service.
+
+---
+
+## Overview
+
+HSW collects browser fingerprints (canvas, WebGL, fonts, timing and more) and encrypts them with AES-128-CBC before they are sent as part of the challenge response. The key is not stored as a plain byte array. Instead it is buried inside a control-flow-flattened, T-table based AES implementation, where the round keys appear as arithmetic constants spread across dozens of switch-case branches.
 
 This project:
 
-1. **Deobfuscates** the HSW script (string array decoding, constant folding, dead code removal) while keeping it fully runnable
-2. **Extracts the AES-128-CBC key** by hooking the AddRoundKey step at runtime
-3. **Decrypts the fingerprint blob** and saves it as readable JSON
+1. **Deobfuscates** the HSW script (string array decoding, constant folding, dead code removal) while keeping it runnable
+2. **Recovers the AES-128 key** by instrumenting the AddRoundKey step at runtime
+3. **Decrypts the fingerprint blob** into readable JSON for analysis
 
-## Files
+## Repository Structure
 
 | File | Description |
 |------|-------------|
-| `deobfuscate.js` | Node.js deobfuscator — resolves string arrays, inlines constants, cleans up the source |
-| `hsw_deobfuscated.js` | Deobfuscated output, fully runnable in a browser |
-| `fetchblobkey.js` | Key extraction tool — patches the JS in-memory, runs it in a real Chrome instance, captures the AES key, verifies it by decrypting + re-encrypting |
+| `hsw.js` | Original HSW script (reference copy, as analyzed) |
+| `deobfuscate.js` | Node.js deobfuscator: resolves string arrays, inlines constants, cleans up the source |
+| `hsw_deobfuscated.js` | Deobfuscated output, still runnable in a browser |
+| `fetchblobkey.js` | Instrumentation tool that captures and verifies the AES key |
 
-## How the encryption works
+## Encryption Scheme
 
 ```
 Plaintext (fingerprint JSON as Uint8Array)
   → PKCS7 padding
-  → AES-128-CBC encrypt (random IV, hardcoded key)
+  → AES-128-CBC encrypt (random IV, embedded key)
   → base64(IV) + "." + base64(ciphertext)
 ```
 
-The AES block cipher (`kc` function) uses a switch-case dispatcher where the product `Ux * pF * wc * MZ` determines which operation runs next. Each case performs one step of an AES round (SubBytes/ShiftRows/MixColumns via T-table lookups, or AddRoundKey via XOR with computed constants). The control flow variables mutate after every case, making static analysis impractical — but at runtime the XOR values applied during AddRoundKey are always the same, because they come from fixed arithmetic expressions.
+The AES block function uses a switch-case dispatcher in which the product of four state variables selects the next operation. Each case performs one step of an AES round (SubBytes, ShiftRows and MixColumns through T-table lookups, or AddRoundKey through XOR with computed constants). The control-flow variables mutate after every case, which makes static analysis impractical. At runtime, however, the XOR values applied during AddRoundKey are always identical because they derive from fixed arithmetic expressions.
 
-## Key extraction approach
+## Key Recovery Approach
 
-`fetchblobkey.js` patches two switch-cases in the AES function (cases 17280 and 37248 — the AddRoundKey steps) to snapshot `dq` before and after the XOR. The delta is the round key. Since this is AES-128, round key 0 = the encryption key.
+`fetchblobkey.js` patches the two AddRoundKey cases of the AES function to snapshot the state before and after the XOR. The difference is the round key, and for AES-128 round key 0 equals the encryption key.
 
-The patched script runs inside a real Chrome instance (via puppeteer-core, no webdriver flags) to avoid detection. After capturing the key, the tool verifies it by:
-- Decrypting the captured ciphertext with Node.js crypto
-- Re-encrypting the plaintext and comparing it byte-for-byte with the original ciphertext
+The patched script runs inside a real Chrome instance via `puppeteer-core`. The captured key is then verified by decrypting the captured ciphertext with Node.js `crypto`, re-encrypting the plaintext and comparing both ciphertexts byte for byte.
 
 ## Usage
 
 ```bash
 npm install
-node deobfuscate.js        # produces hsw_deobfuscated.js
-node fetchblobkey.js        # extracts key, saves decrypted_blob.json
+node deobfuscate.js     # produces hsw_deobfuscated.js
+node fetchblobkey.js    # recovers the key, writes decrypted_blob.json
 ```
 
-Requires Chrome installed and Node.js 18+.
+Requires Node.js 18+ and a local Chrome installation.
 
 ## Scope
 
-This covers the JavaScript-layer blob encryption only. HSW also has a WASM component (`encrypt_req_data` / `decrypt_resp_data`) that handles a separate encryption path — that's not part of this repo.
+This covers the JavaScript-layer blob encryption only. HSW also contains a WebAssembly component (`encrypt_req_data` / `decrypt_resp_data`) with a separate encryption path, which is not part of this repository.
 
-## Contact
+---
 
-If you represent a company and want this taken down, reach out to jomandiscord@gmail.com.
+## Legal Notice
+
+hCaptcha is a trademark of Intuition Machines, Inc. This project is independent and is not affiliated with, sponsored or endorsed by hCaptcha. Third-party scripts included for analysis remain the property of their respective owners.
+
+The software is provided "as is", without warranty of any kind. The author accepts no liability for any misuse.
+
+## Contact & Takedown Requests
+
+Vendors with concerns about this repository can reach out at **jomandiscord@gmail.com**. Content will be reviewed and adjusted or removed promptly where appropriate.
